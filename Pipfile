@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+py-cord = "*"
+numpy = "*"
+
+[dev-packages]
+basedpyright = "*"
+isort = "*"
+ruff = "*"
+black = "*"
+autopep8 = "*"
+pynvim = "*"
+
+[requires]
+python_version = "3.12"

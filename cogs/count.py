@@ -169,9 +169,7 @@ class Counting(commands.Cog, name="Counting"):
                 self.cache = {}
                 json.dump(self.cache, f, sort_keys=True, indent=True)
 
-    @commands.slash_command(
-        description="Initialises the count for the server.", guild_only=True
-    )
+    @commands.slash_command(description="Initialises the count for the server.")
     async def init_counter(self, ctx: "Context", initial_value: int):
         assert ctx.guild is not None
 
@@ -201,6 +199,7 @@ class Counting(commands.Cog, name="Counting"):
                             await self.handle_override(
                                 ctx, count, message_id, initial_value, f
                             )
+                            return
 
                 await self.create_count(ctx, initial_value, f)
                 return
@@ -242,7 +241,8 @@ class Counting(commands.Cog, name="Counting"):
             await ctx.reply(
                 "The original counting message could not be found. Check the bot's permissions and whether the original message exists. Resetting state."
             )
-            self.cache[str(ctx.guild.id)] = {}
+            with open("cache.json", "r+", encoding="utf-8") as f:
+                await self.create_count(ctx, initial_value, f)
         except discord.HTTPException as e:
             await ctx.reply(f"HTTP error with code: {e.status}. Try again later.")
             return

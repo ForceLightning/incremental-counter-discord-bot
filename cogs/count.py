@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import warnings
 from enum import Enum, auto
@@ -85,8 +86,6 @@ class IncrementButton(discord.ui.Button):
             emoji=emoji,
             custom_id=f"{guild_id}::{type}",
         )
-        self.con = con
-        self.cur = self.con.cursor()
         self.guild_id = guild_id
         self.message_id: int
         if message_id:
@@ -99,9 +98,12 @@ class IncrementButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         assert interaction.guild_id is not None
         # NOTE: This button should not even exist if the initial pinned message is not set.
+        con = sqlite3.connect("cache.db")
+        cur = con.cursor()
         try:
             assert interaction.channel is not None
             assert isinstance(interaction.channel, discord.TextChannel)
+            assert interaction.user is not None
             message = await interaction.channel.fetch_message(self.message_id)
             update_query = "UPDATE counting SET count = count {} 1, active = TRUE WHERE server_id = ?"
             match self.button_type:
@@ -110,15 +112,31 @@ class IncrementButton(discord.ui.Button):
                 case ButtonType.DECREMENT:
                     update_query = update_query.format("-")
 
-            self.cur.execute(update_query, (self.guild_id,))
-            self.con.commit()
+            cur.execute(update_query, (self.guild_id,))
+            con.commit()
             select_query = "SELECT count FROM counting WHERE server_id = ?"
-            count, *_ = self.cur.execute(select_query, (self.guild_id,)).fetchone()
-            self.con.commit()
+            count, *_ = cur.execute(select_query, (self.guild_id,)).fetchone()
+            con.commit()
             embed = create_count_embed(count)
             await message.edit(embed=embed)
             await interaction.response.send_message(
                 "Count updated.", ephemeral=True, delete_after=15
+            )
+
+            # Log the event.
+            logging.info(
+                "Server %d: %s %s the count",
+                interaction.guild_id,
+                (
+                    interaction.user.global_name
+                    if interaction.user.global_name is not None
+                    else interaction.user.id
+                ),
+                (
+                    "incremented"
+                    if self.button_type == ButtonType.INCREMENT
+                    else "decremented"
+                ),
             )
 
         except discord.NotFound as e:
@@ -127,37 +145,36 @@ class IncrementButton(discord.ui.Button):
                 ephemeral=True,
                 delete_after=15,
             )
-            self.cur.execute(
+            cur.execute(
                 "UPDATE counting SET active = FALSE WHERE server_id = ?",
                 (self.guild_id,),
             )
-            self.con.commit()
-            warnings.warn(
-                f"{e}: message with id: {self.message_id} not found.", stacklevel=2
-            )
-            return
+            con.commit()
+            logging.error("%s: message with id: %d not found.", e, self.message_id)
         except discord.Forbidden as e:
             await interaction.response.send_message(
                 "Original pinned message is no longer accessible by the bot. Resetting state.",
                 ephemeral=True,
                 delete_after=15,
             )
-            self.cur.execute(
+            cur.execute(
                 "UPDATE counting SET active = FALSE WHERE server_id = ?",
                 (self.guild_id,),
             )
-            self.con.commit()
-            warnings.warn(str(e), stacklevel=2)
-            return
+            con.commit()
+            logging.error("%s: message with id: %d forbidden.", e, self.message_id)
         except discord.HTTPException as e:
             await interaction.response.send_message(
                 f"HTTP error with code: {e.status}. Try again later.",
                 ephemeral=True,
                 delete_after=15,
             )
-            return
+            logging.error("%s: HTTP error %d.", e, e.status)
         except Exception as e:
+            logging.error("%s", e)
             raise e
+        finally:
+            con.close()
 
 
 class Counting(commands.Cog, name="Counting"):
@@ -171,6 +188,14 @@ class Counting(commands.Cog, name="Counting"):
             "CREATE TABLE IF NOT EXISTS counting(server_id INTEGER PRIMARY KEY, message_id INTEGER, count INTEGER, active BOOLEAN NOT NULL CHECK (active IN (0, 1)))"
         )
         self.con.commit()
+
+    async def cog_before_invoke(self, ctx):
+        self.con = sqlite3.connect("cache.db")
+        self.cur = self.con.cursor()
+
+    async def cog_after_invoke(self, ctx):
+        self.con.close()
+        del self.cur
 
     @commands.slash_command(description="Initialises the count for the server.")
     async def init_counter(self, ctx: "Context", initial_value: int):
@@ -243,8 +268,12 @@ class Counting(commands.Cog, name="Counting"):
         """Handles the case where a new count needs to be created."""
         embed = create_count_embed(count)
         view = discord.ui.View(timeout=None)
-        decrement = IncrementButton(ctx.guild.id, None, ButtonType.DECREMENT, self.con)
-        increment = IncrementButton(ctx.guild.id, None, ButtonType.INCREMENT, self.con)
+        decrement = IncrementButton(
+            ctx.guild.id, None, ButtonType.DECREMENT, sqlite3.connect("cache.db")
+        )
+        increment = IncrementButton(
+            ctx.guild.id, None, ButtonType.INCREMENT, sqlite3.connect("cache.db")
+        )
         view.add_item(decrement)
         view.add_item(increment)
         count_msg = await ctx.reply(embed=embed, view=view)
@@ -276,14 +305,15 @@ class Counting(commands.Cog, name="Counting"):
         for server_id, message_id in res:
             view = discord.ui.View(timeout=None)
             decrement = IncrementButton(
-                server_id, message_id, ButtonType.DECREMENT, self.con
+                server_id, message_id, ButtonType.DECREMENT, sqlite3.connect("cache.db")
             )
             view.add_item(decrement)
             increment = IncrementButton(
-                server_id, message_id, ButtonType.INCREMENT, self.con
+                server_id, message_id, ButtonType.INCREMENT, sqlite3.connect("cache.db")
             )
             view.add_item(increment)
             self.bot.add_view(view)
+        self.con.close()
 
 
 def setup(bot):

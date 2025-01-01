@@ -1,4 +1,5 @@
 import configparser
+import logging
 import os
 
 import discord
@@ -48,10 +49,8 @@ TOKEN = config["SECRET"]["TOKEN"]
 @bot.event
 async def on_ready():
     assert bot.user is not None
-    print("Logged in as")
-    print(bot.user.name)
-    print(bot.user.id)
-    print("------")
+    logging.info("logged in as %s", bot.user.name)
+    logging.info("user id: %d", bot.user.id)
     await bot.change_presence(activity=discord.Game(name="with 🦑"))
 
 
@@ -119,5 +118,5 @@ if __name__ == "__main__":
             bot.load_extension(extension)
         except Exception as e:
             exc = "{}: {}".format(type(e).__name__, e)
-            print("Failed to load extension {}\n{}".format(extension, exc))
+            logging.error("Failed to load extension %s\n%s", extension, exc)
     bot.run(TOKEN)

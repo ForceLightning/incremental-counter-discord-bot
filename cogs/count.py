@@ -111,8 +111,10 @@ class IncrementButton(discord.ui.Button):
                     update_query = update_query.format("-")
 
             self.cur.execute(update_query, (self.guild_id,))
+            self.con.commit()
             select_query = "SELECT count FROM counting WHERE server_id = ?"
             count, *_ = self.cur.execute(select_query, (self.guild_id,)).fetchone()
+            self.con.commit()
             embed = create_count_embed(count)
             await message.edit(embed=embed)
             await interaction.response.send_message(
@@ -129,6 +131,7 @@ class IncrementButton(discord.ui.Button):
                 "UPDATE counting SET active = FALSE WHERE server_id = ?",
                 (self.guild_id,),
             )
+            self.con.commit()
             warnings.warn(
                 f"{e}: message with id: {self.message_id} not found.", stacklevel=2
             )
@@ -143,6 +146,7 @@ class IncrementButton(discord.ui.Button):
                 "UPDATE counting SET active = FALSE WHERE server_id = ?",
                 (self.guild_id,),
             )
+            self.con.commit()
             warnings.warn(str(e), stacklevel=2)
             return
         except discord.HTTPException as e:
@@ -166,6 +170,7 @@ class Counting(commands.Cog, name="Counting"):
         self.cur.execute(
             "CREATE TABLE IF NOT EXISTS counting(server_id INTEGER PRIMARY KEY, message_id INTEGER, count INTEGER, active BOOLEAN NOT NULL CHECK (active IN (0, 1)))"
         )
+        self.con.commit()
 
     @commands.slash_command(description="Initialises the count for the server.")
     async def init_counter(self, ctx: "Context", initial_value: int):
@@ -232,6 +237,7 @@ class Counting(commands.Cog, name="Counting"):
             "UPDATE counting SET message_id = ?, count = ?, active = TRUE WHERE server_id = ?",
             (count_msg.id, count, ctx.guild.id),
         )
+        self.con.commit()
 
     async def create_count(self, ctx: "Context", count: int):
         """Handles the case where a new count needs to be created."""
@@ -259,6 +265,7 @@ class Counting(commands.Cog, name="Counting"):
                 "UPDATE counting SET message_id = ?, count = ?, active = TRUE WHERE server_id = ?",
                 (count_msg.id, count, ctx.guild.id),
             )
+        self.con.commit()
 
     @commands.Cog.listener()
     async def on_ready(self):

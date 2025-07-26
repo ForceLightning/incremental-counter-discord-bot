@@ -5,7 +5,10 @@ import os
 import discord
 from discord.ext import bridge, commands
 
-description = "A discord bot to count the unironic use of 'slay'."
+from utils.logging import LOGGING_FORMAT
+
+DESCRIPTION = "A discord bot to count the unironic use of 'slay'."
+logger = logging.getLogger(__name__)
 
 if not os.path.exists("settings.ini"):
     with open("settings.ini", "xt", encoding="utf-8") as f:
@@ -37,7 +40,7 @@ intents.reactions = True
 
 bot = bridge.Bot(
     command_prefix=config["BASE"]["prefix"],
-    description=description,
+    description=DESCRIPTION,
     help_command=None,
     intents=intents,
 )
@@ -49,8 +52,8 @@ TOKEN = config["SECRET"]["TOKEN"]
 @bot.event
 async def on_ready():
     assert bot.user is not None
-    logging.info("logged in as %s", bot.user.name)
-    logging.info("user id: %d", bot.user.id)
+    logger.info("logged in as %s", bot.user.name)
+    logger.info("user id: %d", bot.user.id)
     await bot.change_presence(activity=discord.Game(name="with 🦑"))
 
 
@@ -113,6 +116,10 @@ async def owner(ctx):
 
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.DEBUG, format=LOGGING_FORMAT)
+    logger = logging.getLogger(__name__)
+
     for extension in startup_extensions:
         try:
             bot.load_extension(extension)

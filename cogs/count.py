@@ -9,6 +9,8 @@ from discord.ext.commands.context import Context
 from discord.message import Message
 from discord.ui import Item
 
+logger = logging.getLogger(__name__)
+
 
 class ConfirmDeny(Enum):
     CONFIRM = auto()
@@ -124,7 +126,7 @@ class IncrementButton(discord.ui.Button):
             )
 
             # Log the event.
-            logging.info(
+            logger.info(
                 "Server %d: %s %s the count",
                 interaction.guild_id,
                 (
@@ -140,6 +142,7 @@ class IncrementButton(discord.ui.Button):
             )
 
         except discord.NotFound as e:
+            logger.error("%s: message with id: %d not found.", e, self.message_id)
             await interaction.response.send_message(
                 "Original pinned message not found. Resetting state.",
                 ephemeral=True,
@@ -150,8 +153,8 @@ class IncrementButton(discord.ui.Button):
                 (self.guild_id,),
             )
             con.commit()
-            logging.error("%s: message with id: %d not found.", e, self.message_id)
         except discord.Forbidden as e:
+            logger.error("%s: message with id: %d forbidden.", e, self.message_id)
             await interaction.response.send_message(
                 "Original pinned message is no longer accessible by the bot. Resetting state.",
                 ephemeral=True,
@@ -162,16 +165,15 @@ class IncrementButton(discord.ui.Button):
                 (self.guild_id,),
             )
             con.commit()
-            logging.error("%s: message with id: %d forbidden.", e, self.message_id)
         except discord.HTTPException as e:
+            logger.error("%s: HTTP error %d.", e, e.status)
             await interaction.response.send_message(
                 f"HTTP error with code: {e.status}. Try again later.",
                 ephemeral=True,
                 delete_after=15,
             )
-            logging.error("%s: HTTP error %d.", e, e.status)
         except Exception as e:
-            logging.error("%s", e)
+            logger.error("%s", e)
             raise e
         finally:
             con.close()
